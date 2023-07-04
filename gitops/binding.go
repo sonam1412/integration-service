@@ -17,10 +17,11 @@ limitations under the License.
 package gitops
 
 import (
+	"math"
+
 	applicationapiv1alpha1 "github.com/redhat-appstudio/application-api/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"math"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -65,10 +66,10 @@ func NewBindingComponents(components []applicationapiv1alpha1.Component) *[]appl
 	return &bindingComponents
 }
 
-// hasDeploymentFinished returns a boolean that is only true if the first passed object
-// is a SnapshotEnvironmentBinding with the componentDeployment status Unknown and the second
-// passed object is a SnapshotEnvironmentBinding with the componentDeployment status True/False.
-func hasDeploymentFinished(objectOld, objectNew client.Object) bool {
+// hasDeploymentSucceeded returns a boolean that is only true if the first passed object
+// is a SnapshotEnvironmentBinding with the componentDeployment status anything other than True and
+// the second passed object is a SnapshotEnvironmentBinding with the componentDeployment status True.
+func hasDeploymentSucceeded(objectOld, objectNew client.Object) bool {
 	var oldCondition, newCondition *metav1.Condition
 
 	if oldBinding, ok := objectOld.(*applicationapiv1alpha1.SnapshotEnvironmentBinding); ok {
@@ -84,5 +85,5 @@ func hasDeploymentFinished(objectOld, objectNew client.Object) bool {
 		}
 	}
 
-	return oldCondition.Status == metav1.ConditionUnknown && newCondition.Status != metav1.ConditionUnknown
+	return oldCondition.Status != metav1.ConditionTrue && newCondition.Status == metav1.ConditionTrue
 }

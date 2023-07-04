@@ -15,6 +15,7 @@ package gitops_test
 
 import (
 	"context"
+
 	"github.com/redhat-appstudio/integration-service/gitops"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -36,12 +37,25 @@ var _ = Describe("Predicates", Ordered, func() {
 		snapshotName    = "test-snapshot"
 	)
 
-	var bindingUnknownStatus, bindingTrueStatus *applicationapiv1alpha1.SnapshotEnvironmentBinding
+	var bindingUnknownStatus, bindingFalseStatus, bindingTrueStatus *applicationapiv1alpha1.SnapshotEnvironmentBinding
 
 	BeforeAll(func() {
 		bindingUnknownStatus = &applicationapiv1alpha1.SnapshotEnvironmentBinding{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:       "bindingunknownstatus",
+				Namespace:  namespace,
+				Generation: 1,
+			},
+			Spec: applicationapiv1alpha1.SnapshotEnvironmentBindingSpec{
+				Application: applicationName,
+				Environment: environmentName,
+				Snapshot:    snapshotName,
+				Components:  []applicationapiv1alpha1.BindingComponent{},
+			},
+		}
+		bindingFalseStatus = &applicationapiv1alpha1.SnapshotEnvironmentBinding{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:       "bindingfalsestatus",
 				Namespace:  namespace,
 				Generation: 1,
 			},
@@ -69,6 +83,7 @@ var _ = Describe("Predicates", Ordered, func() {
 		ctx := context.Background()
 
 		Expect(k8sClient.Create(ctx, bindingUnknownStatus)).Should(Succeed())
+		Expect(k8sClient.Create(ctx, bindingFalseStatus)).Should(Succeed())
 		Expect(k8sClient.Create(ctx, bindingTrueStatus)).Should(Succeed())
 
 		// Set the binding statuses after they are created
@@ -76,6 +91,12 @@ var _ = Describe("Predicates", Ordered, func() {
 			{
 				Type:   gitops.BindingDeploymentStatusConditionType,
 				Status: metav1.ConditionUnknown,
+			},
+		}
+		bindingFalseStatus.Status.ComponentDeploymentConditions = []metav1.Condition{
+			{
+				Type:   gitops.BindingDeploymentStatusConditionType,
+				Status: metav1.ConditionFalse,
 			},
 		}
 		bindingTrueStatus.Status.ComponentDeploymentConditions = []metav1.Condition{
@@ -88,17 +109,27 @@ var _ = Describe("Predicates", Ordered, func() {
 
 	AfterAll(func() {
 		err := k8sClient.Delete(ctx, bindingUnknownStatus)
+		err = k8sClient.Delete(ctx, bindingFalseStatus)
+		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 		err = k8sClient.Delete(ctx, bindingTrueStatus)
 		Expect(err == nil || errors.IsNotFound(err)).To(BeTrue())
 	})
 
-	Context("when testing DeploymentFinishedPredicate predicate", func() {
-		instance := gitops.DeploymentFinishedForIntegrationBindingPredicate()
+	Context("when testing DeploymentSucceededPredicate predicate", func() {
+		instance := gitops.DeploymentSucceededForIntegrationBindingPredicate()
 
 		It("returns true when the old SnapshotEnvironmentBinding has unknown status and the new one has true status", func() {
 			contextEvent := event.UpdateEvent{
 				ObjectOld: bindingUnknownStatus,
+				ObjectNew: bindingTrueStatus,
+			}
+			Expect(instance.Update(contextEvent)).To(BeTrue())
+		})
+
+		It("returns true when the old SnapshotEnvironmentBinding has false status and the new one has true status", func() {
+			contextEvent := event.UpdateEvent{
+				ObjectOld: bindingFalseStatus,
 				ObjectNew: bindingTrueStatus,
 			}
 			Expect(instance.Update(contextEvent)).To(BeTrue())
